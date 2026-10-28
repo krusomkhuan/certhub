@@ -1,0 +1,12 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const qrcode = require('../assets/qrcode.js');
+const target = {innerHTML: '',textContent:''};
+const url='https://certificate.example.ac.th/certhub/?page=certificate&token=0123456789abcdef0123456789abcdef';
+const link={dataset:{url},querySelector:()=>target};
+vm.runInNewContext(fs.readFileSync(require.resolve('../assets/certificate.js'),'utf8'),{qrcode,document:{getElementById:()=>link}});
+assert.match(target.innerHTML, /<svg/);
+assert.match(target.innerHTML, /<path/);
+assert.equal(target.textContent,'');
+console.log('PASS: certificate script renders local QR SVG for verification URL');

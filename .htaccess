@@ -1,0 +1,5 @@
+# This checkout lives under the web root; Git metadata is never public.
+RedirectMatch 404 "(?i)(^|/)\.git(/|$)"
+<FilesMatch "^\.env(?:\..*)?$">
+    Require all denied
+</FilesMatch>

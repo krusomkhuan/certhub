@@ -1,0 +1,4 @@
+<?php if(!isset($db) || !canIssue()){http_response_code(403);exit;}
+$pendingWorks=rows('SELECT p.id,p.title,COUNT(r.id) total FROM projects p JOIN recipients r ON r.project_id=p.id WHERE r.certificate_number IS NULL GROUP BY p.id ORDER BY p.id DESC');
+?>
+<section class="card"><h2>งานที่รอออกเลขกลาง</h2><p class="muted">รายชื่อที่ผู้ดูแลบันทึกไว้ในงาน / โครงการ แต่ยังไม่ได้รับเลขที่</p><?php if(!$pendingWorks):?><p>ไม่มีงานรอออกเลข</p><?php endif ?><?php foreach($pendingWorks as $work):?><div class="result"><div><strong><?=e($work['title'])?></strong><p><?=$work['total']?> รายชื่อยังไม่มีเลข</p></div><form method="post" action="?page=register&id=<?=$work['id']?>"><?=csrf()?><input type="hidden" name="action" value="issue_work"><button>ออกเลขให้รายชื่อในงานนี้</button></form></div><?php endforeach ?></section>

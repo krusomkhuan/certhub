@@ -1,0 +1,9 @@
+/data/*
+!/data/.htaccess
+
+.env
+.env.*
+!.env.example
+*.log
+__pycache__/
+*.pyc
