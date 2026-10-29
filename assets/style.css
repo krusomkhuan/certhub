@@ -15,3 +15,7 @@
 footer .app-version{display:inline;white-space:nowrap}
 
 footer{flex-wrap:wrap;gap:8px}.developer-credit{flex-basis:100%;font-size:calc(11px * var(--font-scale,1));line-height:1.8;color:#65786c}
+
+.project-card{position:relative}.public-project-link::after{content:"";position:absolute;inset:0;border-radius:12px}.project-detail-link{position:relative;z-index:1}.project-card:has(.public-project-link):hover{border-color:#7fa88a;box-shadow:0 5px 18px #245e5010}.public-project-link:focus-visible::after{outline:3px solid #6e9b7c;outline-offset:3px}
+
+.certificate-search{align-items:end;flex-wrap:wrap}.certificate-search label{flex:1 1 230px;min-width:0;margin:0}.certificate-search select{width:100%;text-overflow:ellipsis}.certificate-search button{flex:0 0 auto}@media(max-width:800px){.certificate-search{align-items:stretch}.certificate-search label{flex:auto}}

@@ -38,6 +38,21 @@ with tempfile.TemporaryDirectory(prefix='certhub-register-') as temp:
         assert 'ออกเลขที่' in post('?page=register',{**direct,'name':'ผู้รับเอกสาร','output_mode':'certificate','heading':'ได้รับรางวัลทดสอบ'})
         doc=con.execute('SELECT token,central_sequence FROM recipients WHERE record_only=0').fetchone();assert doc[1]==11
         assert 'ได้รับรางวัลทดสอบ' in get('?page=certificate&token='+doc[0])
+        doc_project=con.execute('SELECT project_id FROM recipients WHERE token=?',(doc[0],)).fetchone()[0]
+        public=urllib.request.build_opener()
+        detail=public.open(base+f'?page=public-project&id={doc_project}').read().decode()
+        assert 'ค้นหาเกียรติบัตรในโครงการนี้' in detail and 'href="?page=profile"' not in detail
+        found=public.open(base+f'?page=public-project&id={doc_project}&q='+urllib.parse.quote('ผู้รับเอกสาร')).read().decode()
+        assert 'ดู / ดาวน์โหลด' in found
+        found=public.open(base+f'?project_id={doc_project}&q='+urllib.parse.quote('ผู้รับเอกสาร')).read().decode()
+        assert 'ดู / ดาวน์โหลด' in found and 'name="project_id"' in found
+        assert 'ดู / ดาวน์โหลด' in public.open(base+'?project_id=0&q='+urllib.parse.quote('ผู้รับเอกสาร')).read().decode()
+        wrong=public.open(base+'?project_id=999999&q='+urllib.parse.quote('ผู้รับเอกสาร')).read().decode()
+        assert 'ดู / ดาวน์โหลด' not in wrong
+        try:public.open(base+f'?page=public-project&id={r[4]}');raise AssertionError('unpublished detail visible')
+        except urllib.error.HTTPError as e:assert e.code==404
+        assert f'?page=public-project&id={doc_project}' in public.open(base).read().decode()
+        print('PASS: public project cards/details, anonymous scoped name search, project filter, unpublished project denied')
         post('?page=new',{'action':'project','title':'งานอบรมทดสอบ','date':'2026-10-29','end_date':'2026-10-30','location':'วิทยาลัย','description':'','owner':'ผู้ทดสอบ','event_type':'training'})
         pid=con.execute('SELECT MAX(id) FROM projects').fetchone()[0]
         post(f'?page=project&id={pid}&tab=people',{'action':'recipient','name':'ผู้เข้าอบรม','organization':'','role':'participant'})
@@ -124,7 +139,7 @@ with tempfile.TemporaryDirectory(prefix='certhub-register-') as temp:
         print('PASS: bulk direct numbering contiguous, duplicate names rejected without consuming numbers')
         print('PASS: staff and deputy roles, role-specific login, reports access, forbidden pages and backup mutation blocked')
         print('PASS: request submission without allocation, approval, number-only results, duplicate approval blocked, private tracking token, admin-only review')
-        regression=subprocess.run(['python',str(root/'tests/integration.py')],env={**os.environ,'CERTHUB_TEST_ROOT':str(work),'CERTHUB_TEST_URL':base},capture_output=True,text=True,encoding='utf-8',creationflags=flags)
+        regression=subprocess.run(['python',str(root/'tests/integration.py')],env={**os.environ,'PYTHONIOENCODING':'utf-8','CERTHUB_TEST_ROOT':str(work),'CERTHUB_TEST_URL':base},capture_output=True,text=True,encoding='utf-8',creationflags=flags)
         assert regression.returncode==0,regression.stdout+regression.stderr
         print(regression.stdout.strip())
         print('PASS: isolated DB; central menu; number-only without document; generated document; training shares counter; six simultaneous issuers; immutable/revoked numbers; no rewind; legacy collision atomic rollback; unique DB constraint; guide')
