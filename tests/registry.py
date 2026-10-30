@@ -234,6 +234,15 @@ with tempfile.TemporaryDirectory(prefix='certhub-register-') as temp:
         assert 'ขณะนี้ออกเลขถึง:' in get('?page=requests')
         assert 'ขณะนี้ออกเลขถึง:' in get(f'?page=project&id={pid}&tab=people')
         print('PASS: current highest issued number and next allocation displayed before issuing')
+        # Public search ignores the title prefix and spacing, accepts parts of a name and small typos,
+        # but needs at least 3 characters so a bare title cannot list everyone.
+        post('?page=register',{**direct,'names':'นายทดสอบ  ค้นหาชื่อ','output_mode':'certificate','published':'1'})
+        visitor=urllib.request.build_opener()
+        for typed in ['ทดสอบ ค้นหาชื่อ','นายทดสอบ ค้นหาชื่อ','  ทดสอบ   ค้นหาชื่อ ','ค้นหาชื่อ','ทดสอบ','ทดสอบ ค้นหาชือ','ค้นหาชือ']:
+            assert 'นายทดสอบ  ค้นหาชื่อ' in visitor.open(base+'?q='+urllib.parse.quote(typed)).read().decode(),typed
+        for rejected in ['นาย','ทด','%','นางสาว']:
+            assert 'นายทดสอบ  ค้นหาชื่อ' not in visitor.open(base+'?q='+urllib.parse.quote(rejected)).read().decode(),rejected
+        print('PASS: public search ignores title prefix and spacing, finds partial and similar names, needs 3+ characters')
         regression=subprocess.run(['python',str(root/'tests/integration.py')],env={**os.environ,'PYTHONIOENCODING':'utf-8','CERTHUB_TEST_DATABASE':database,'CERTHUB_TEST_ROOT':str(work),'CERTHUB_TEST_URL':base},capture_output=True,text=True,encoding='utf-8',creationflags=flags)
         assert regression.returncode==0,regression.stdout+regression.stderr
         print(regression.stdout.strip())
