@@ -31,6 +31,8 @@ function nameKey(string $name): string {
  $name=trim(preg_replace('/\s+/u',' ',$name));
  return trim(preg_replace('/^(ว่าที่\s*(ร้อย(ตรี|โท|เอก)|ร\.\s*[ตทอ]\.)\s*)?(นางสาว|นาง|นาย|น\.ส\.|เด็กชาย|เด็กหญิง|ด\.ช\.|ด\.ญ\.|ดร\.|ผศ\.|รศ\.|ศ\.)?\s*/u','',$name));
 }
+// UTF-8 characters via PCRE, so public search works even where the host lacks mbstring.
+function utf8Chars(string $text): array {return preg_split('//u',$text,-1,PREG_SPLIT_NO_EMPTY)?:[];}
 function textDistance(array $a,array $b): int {
  $row=range(0,count($b));
  foreach($a as $i=>$x) {$prev=$row;$row=[$i+1];foreach($b as $j=>$y) $row[]=min($prev[$j+1]+1,$row[$j]+1,$prev[$j]+($x===$y?0:1));}
@@ -40,17 +42,17 @@ const CERTIFICATE_SEARCH_LIMIT=20;
 // Published, issued certificates matching $query: whole name, part of a name or number, or a name with a few typos.
 // At least 3 characters (title prefix and spaces ignored) and at most CERTIFICATE_SEARCH_LIMIT results, best match first.
 function findCertificates(string $query,int $projectId=0): array {
- $query=trim($query);$key=str_replace(' ','',nameKey($query));$chars=mb_str_split($key);
+ $query=trim($query);$key=str_replace(' ','',nameKey($query));$chars=utf8Chars($key);
  if(count($chars)<3 && !preg_match('/\d/',$query)) return [];
  $found=[];
  foreach(rows('SELECT r.*,p.title FROM recipients r JOIN projects p ON p.id=r.project_id WHERE p.published=1 AND r.issued=1 AND r.record_only=0 AND (?=0 OR r.project_id=?) ORDER BY r.project_id,r.id',[$projectId,$projectId]) as $r) {
   $name=str_replace(' ','',nameKey($r['name']));$number=(string)$r['certificate_number'];
   if($number===$query || ($key!=='' && $name===$key)) $score=0;
-  elseif(mb_strlen($query)>=3 && str_contains($number,$query)) $score=1;
-  elseif(count($chars)>=3 && str_contains($name,$key)) $score=2;
+  elseif(count(utf8Chars($query))>=3 && strpos($number,$query)!==false) $score=1;
+  elseif(count($chars)>=3 && strpos($name,$key)!==false) $score=2;
   elseif(count($chars)>=3) {
    // Typos are tolerated against the whole name or against the first name / surname alone.
-   $distance=min(array_map(fn($part)=>textDistance($chars,mb_str_split($part)),[$name,...explode(' ',nameKey($r['name']))]));
+   $distance=min(array_map(fn($part)=>textDistance($chars,utf8Chars($part)),[$name,...explode(' ',nameKey($r['name']))]));
    if($distance>max(1,intdiv(count($chars),5))) continue;
    $score=3+$distance;
   } else continue;
