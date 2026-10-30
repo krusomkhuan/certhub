@@ -117,7 +117,7 @@ if($_SERVER['REQUEST_METHOD']==='POST') {
 }
 if(in_array($page,['dashboard','project','new','report','settings','profile','admins','register','issued-numbers','requests','reports'],true) && !admin()) go('?page=login');
 if(admin() && userRole()!=='admin') {
- $allowedPages=userRole()==='registry'?['home','public-project','login','register','issued-numbers','requests','reports','report','profile','request','guide','privacy','certificate','media']:['home','public-project','login','reports','report','profile','request','guide','privacy','media'];
+ $allowedPages=userRole()==='registry'?['home','public-project','login','register','issued-numbers','requests','reports','report','profile','request','guide','privacy','certificate','media']:['home','public-project','login','reports','report','profile','request','guide','privacy','media','certificate'];
  if(!in_array($page,$allowedPages,true)){http_response_code(403);exit('บัญชีนี้ไม่มีสิทธิ์เข้าถึงหน้านี้');}
 }
 if($page==='sample') {header('Content-Type: text/csv; charset=utf-8');header('Content-Disposition: attachment; filename="participants.csv"');echo "\xEF\xBB\xBFname,role\r\nนายตัวอย่าง ใจดี,participant\r\nนางสาวตัวอย่าง สอนดี,speaker\r\nนายตัวอย่าง ทำดี,committee\r\nนายตัวอย่าง ผู้รับรางวัล,general\r\n";exit;}
@@ -131,7 +131,8 @@ if($page==='media') {
 }
 if($page==='certificate') {
  $cert=rows('SELECT r.*, p.title,p.date,p.end_date,p.published,t.heading,t.signer,t.position,t.color,t.background FROM recipients r JOIN projects p ON p.id=r.project_id JOIN templates t ON t.project_id=p.id AND t.role=r.role WHERE r.record_only=0 AND r.token=?',[$_GET['token']??''])[0]??null;
- if(!$cert || (!admin() && (!$cert['issued'] || !$cert['published']))) {http_response_code(404);exit('ไม่พบเกียรติบัตร หรือเกียรติบัตรถูกเพิกถอน');}
+ // Anyone may open an issued, published certificate without logging in; only issuing staff also see drafts.
+ if(!$cert || (!canIssue() && (!$cert['issued'] || !$cert['published']))) {http_response_code(404);exit('ไม่พบเกียรติบัตร หรือเกียรติบัตรถูกเพิกถอน');}
 }
 $backendView=admin();
 $notice=$_SESSION['notice']??'';unset($_SESSION['notice']);

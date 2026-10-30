@@ -184,6 +184,8 @@ with tempfile.TemporaryDirectory(prefix='certhub-register-') as temp:
             for forbidden in ['settings','admins','new']+(['register','requests'] if role=='report_viewer' else []):
                 try:actor.open(base+'?page='+forbidden);raise AssertionError(role+' accessed '+forbidden)
                 except urllib.error.HTTPError as e:assert e.code==403
+            # A logged-in account can still open public certificates like any visitor.
+            assert '<article class="certificate' in actor.open(base+'?page=certificate&token='+doc[0]).read().decode()
             profile_html=actor.open(base+'?page=profile').read().decode();csrf=re.search(r'name="csrf" value="([^"]+)"',profile_html).group(1)
             try:actor.open(base+'?page=profile',urllib.parse.urlencode({'action':'backup','csrf':csrf}).encode());raise AssertionError('backup access granted')
             except urllib.error.HTTPError as e:assert e.code==403
