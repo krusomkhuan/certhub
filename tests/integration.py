@@ -8,7 +8,7 @@ base=os.environ['CERTHUB_TEST_URL']
 con=mysql_support.Connection()
 username='test_'+secrets.token_hex(8)
 password=secrets.token_urlsafe(24)
-hash_value=subprocess.check_output(['C:/xampp/php/php.exe','-r','echo password_hash($argv[1], PASSWORD_DEFAULT);',password],text=True)
+hash_value=subprocess.check_output(['C:/xampp/php/php.exe','-r','echo password_hash($argv[1], PASSWORD_DEFAULT);','--',password],text=True)
 con.execute('INSERT INTO admins(username,password) VALUES(?,?)',(username,hash_value));con.commit()
 client=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 project=None

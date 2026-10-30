@@ -6,7 +6,7 @@ root=Path(os.environ['CERTHUB_TEST_ROOT']);base=os.environ['CERTHUB_TEST_URL']
 # Initialize additive migrations before inserting isolated test accounts.
 urllib.request.urlopen(base).read()
 con=mysql_support.Connection();name='profile_test_'+secrets.token_hex(5);other=name+'_other';password=secrets.token_urlsafe(18);newpass=secrets.token_urlsafe(18)
-hash_value=subprocess.check_output(['C:/xampp/php/php.exe','-r','echo password_hash($argv[1], PASSWORD_DEFAULT);',password],text=True)
+hash_value=subprocess.check_output(['C:/xampp/php/php.exe','-r','echo password_hash($argv[1], PASSWORD_DEFAULT);','--',password],text=True)
 ids=[]
 for username in [name,other]:
     ids.append(con.execute('INSERT INTO admins(username,password) VALUES(?,?)',(username,hash_value)).lastrowid)

@@ -6,7 +6,7 @@ root=Path(os.environ['CERTHUB_TEST_ROOT']);base=os.environ['CERTHUB_TEST_URL']
 # Initialize additive migrations before inserting isolated test accounts.
 urllib.request.urlopen(base).read()
 con=mysql_support.Connection();name='profile_test_'+secrets.token_hex(5);other=name+'_other';password=secrets.token_urlsafe(18);newpass=secrets.token_urlsafe(18)
-hash_value=subprocess.check_output(['C:/xampp/php/php.exe','-r','echo password_hash($argv[1], PASSWORD_DEFAULT);',password],text=True)
+hash_value=subprocess.check_output(['C:/xampp/php/php.exe','-r','echo password_hash($argv[1], PASSWORD_DEFAULT);','--',password],text=True)
 ids=[]
 for username in [name,other]:
     ids.append(con.execute('INSERT INTO admins(username,password) VALUES(?,?)',(username,hash_value)).lastrowid)
@@ -32,6 +32,9 @@ try:
     assert 'มีผู้ใช้งานแล้ว' in post(a,'?page=admins',payload())
     assert 'ภาพรวมระบบ' in post(b,'?page=login',{'action':'login','username':created,'password':newpass})
     assert 'เพิ่มบัญชีผู้ใช้งานและสิทธิ์' in get(b,'?page=admins')
+    # Phone keyboards capitalise the first letter; login still matches the one account.
+    assert 'ภาพรวมระบบ' in post(client(),'?page=login',{'action':'login','username':created.capitalize(),'password':newpass})
+    assert 'ไม่ถูกต้อง' in post(client(),'?page=login',{'action':'login','username':created.capitalize(),'password':'wrong-password'})
     assert name in get(a,'?page=profile')
     assert 'ยินดีต้อนรับกลับ' in get(client(),'?page=admins')
     before=con.execute('SELECT COUNT(*) FROM admins').fetchone()[0]
