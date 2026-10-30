@@ -3,3 +3,7 @@ RedirectMatch 404 "(?i)(^|/)\.git(/|$)"
 <FilesMatch "^\.env(?:\..*)?$">
     Require all denied
 </FilesMatch>
+
+<Files "config.php">
+    Require all denied
+</Files>

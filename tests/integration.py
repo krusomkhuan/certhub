@@ -1,11 +1,11 @@
-import os, time
+import os, time, mysql_support
 import zipfile, json, hashlib
-import urllib.request, urllib.parse, http.cookiejar, re, sqlite3, subprocess, secrets, io, base64
+import urllib.request, urllib.parse, http.cookiejar, re, subprocess, secrets, io, base64
 from pathlib import Path
 if 'CERTHUB_TEST_ROOT' not in os.environ: raise SystemExit('Run python tests/registry.py to use an isolated test database')
 root=Path(os.environ['CERTHUB_TEST_ROOT'])
 base=os.environ['CERTHUB_TEST_URL']
-con=sqlite3.connect(root/'data/certhub.sqlite')
+con=mysql_support.Connection()
 username='test_'+secrets.token_hex(8)
 password=secrets.token_urlsafe(24)
 hash_value=subprocess.check_output(['C:/xampp/php/php.exe','-r','echo password_hash($argv[1], PASSWORD_DEFAULT);',password],text=True)
@@ -44,6 +44,9 @@ try:
     upload(url+'&tab=people','import','csv','people.csv',csv,'text/csv')
     upload(url+'&tab=people','import','csv','people.csv',csv,'text/csv')
     assert con.execute('SELECT COUNT(*) FROM recipients WHERE project_id=?',(project,)).fetchone()[0]==3
+    two=upload(url+'&tab=people','import','csv','people.csv','name,role,\r\nทดสอบ ผู้เข้าอบรม,participant,\r\n,,\r\nทดสอบ วิทยากร,speaker\r\n'.encode('utf-8-sig'),'text/csv')
+    assert 'ข้ามรายชื่อซ้ำ 2' in two and con.execute('SELECT COUNT(*) FROM recipients WHERE project_id=?',(project,)).fetchone()[0]==3
+    assert 'หัวตารางต้องเป็น name,role' in upload(url+'&tab=people','import','csv','people.csv','no,name,role\r\n1,x,general\r\n'.encode('utf-8-sig'),'text/csv')
     post(url,{'action':'issue'});post(url,{'action':'publish','published':'1'})
     anon=urllib.request.build_opener()
     assert 'ดู / ดาวน์โหลด' in get('?q='+urllib.parse.quote('ทดสอบ ผู้เข้าอบรม'),anon)
@@ -53,12 +56,19 @@ try:
     number=con.execute('SELECT certificate_number FROM recipients WHERE id=?',(rid,)).fetchone()[0]
     assert number.startswith(username+'/2569/')
     assert 'ดู / ดาวน์โหลด' in get('?q='+urllib.parse.quote(number),anon)
-    post('?page=register',{'action':'central_numbering','number_pattern':'CHANGED-{seq}','number_next':str(max(100,int(con.execute("SELECT value FROM settings WHERE name='central_next'").fetchone()[0]))),'number_width':'3'})
+    post('?page=register',{'action':'central_numbering','number_pattern':'CHANGED-{seq}/{year}','number_next':str(max(100,int(con.execute("SELECT value FROM settings WHERE name='central_next'").fetchone()[0]))),'number_width':'3'})
     post(url,{'action':'issue'})
     assert con.execute('SELECT certificate_number FROM recipients WHERE id=?',(rid,)).fetchone()[0]==number
     post(url+'&tab=report',{'action':'report','objective':'วัตถุประสงค์ทดสอบ','results':'ผลการอบรมทดสอบ','problems':'ไม่มี','suggestions':'จัดต่อเนื่อง'})
     assert 'ผลการอบรมทดสอบ' in get(f'?page=report&id={project}')
     png=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1sAAAAASUVORK5CYII=')
+    con.execute("DELETE FROM templates WHERE project_id=? AND role='general'",(project,))
+    assert get(url+'&tab=templates').count('name="background"')==4
+    upload(url+'&tab=templates','template','background','background.png',png,'image/png',{'role':'general'})
+    background=con.execute("SELECT background FROM templates WHERE project_id=? AND role='general'",(project,)).fetchone()[0]
+    assert background and (root/'data'/background).is_file()
+    files.append(background)
+    assert con.execute('SELECT COUNT(*) FROM templates WHERE project_id=?',(project,)).fetchone()[0]==4
     upload(url+'&tab=report','photo','photo','test.png',png,'image/png',{'caption':'ภาพกิจกรรมทดสอบ'})
     files=[r[0] for r in con.execute('SELECT filename FROM photos WHERE project_id=?',(project,))]
     assert len(files)==1 and 'ภาพกิจกรรมทดสอบ' in get(f'?page=report&id={project}')
@@ -69,10 +79,19 @@ try:
     assert response.headers.get_content_type()=='application/zip'
     archive=zipfile.ZipFile(io.BytesIO(response.read()))
     assert archive.testzip() is None
-    restored=sqlite3.connect(':memory:');restored.deserialize(archive.read('data/certhub.sqlite'))
-    assert restored.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
-    assert restored.execute('SELECT certificate_number FROM recipients WHERE id=?',(rid,)).fetchone()[0]==number
-    restored.close()
+    restore_name=os.environ['CERTHUB_TEST_DATABASE']+'_restore'
+    controller=mysql_support.pymysql.connect(**mysql_support.options())
+    controller.cursor().execute('CREATE DATABASE `'+restore_name+'` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin')
+    restored=mysql_support.Connection(restore_name)
+    try:
+        for statement in archive.read('database/certhub.sql').decode().split(';'):
+            if statement.strip():restored.execute(statement)
+        assert restored.execute('SELECT certificate_number FROM recipients WHERE id=?',(rid,)).fetchone()[0]==number
+        assert restored.execute('SELECT COUNT(*) FROM recipients').fetchone()[0]==con.execute('SELECT COUNT(*) FROM recipients').fetchone()[0]
+        assert restored.execute('SELECT title FROM projects WHERE id=?',(project,)).fetchone()[0]==username
+        assert 'config.php' not in archive.namelist()
+    finally:
+        restored.close();controller.cursor().execute('DROP DATABASE `'+restore_name+'`');controller.close()
     manifest=json.loads(archive.read('manifest.json'))
     for name,digest in manifest['sha256'].items():assert hashlib.sha256(archive.read(name)).hexdigest()==digest
     assert 'data/'+files[0] in archive.namelist()
@@ -88,9 +107,15 @@ try:
     before=con.execute('SELECT COUNT(*) FROM recipients WHERE project_id=?',(project,)).fetchone()[0]
     client.open(base+url,urllib.parse.urlencode({'action':'recipient','name':'Bad','role':'speaker','organization':'x','csrf':'invalid'}).encode()).read()
     assert con.execute('SELECT COUNT(*) FROM recipients WHERE project_id=?',(project,)).fetchone()[0]==before
+    assert con.execute('SELECT id FROM recipients WHERE id=?',(rid,)).fetchone() is None
+    post(url+'&tab=people',{'action':'recipient','name':'returned number recipient','organization':'','role':'participant'})
+    post(url,{'action':'issue'})
+    assert con.execute("SELECT COUNT(*) FROM settings WHERE LEFT(name,16)='released_number_'").fetchone()[0]==0
+    try:get('?page=certificate&token='+token,anon);raise AssertionError('old token reused')
+    except urllib.error.HTTPError as e:assert e.code==404
     post(url+'&tab=people',{'action':'recipient','name':'collision test','organization':'','role':'participant'})
     next_no=int(con.execute("SELECT value FROM settings WHERE name='central_next'").fetchone()[0])
-    con.execute('INSERT INTO recipients(project_id,name,role,token,certificate_number,issued) VALUES(?,?,?,?,?,1)',(project,'legacy collision','participant',secrets.token_hex(16),'CHANGED-'+str(next_no).zfill(3)));con.commit()
+    con.execute('INSERT INTO recipients(project_id,name,role,token,certificate_number,issued) VALUES(?,?,?,?,?,1)',(project,'legacy collision','participant',secrets.token_hex(16),'CHANGED-'+str(next_no).zfill(3)+'/2569'));con.commit()
     assert 'เลขที่ซ้ำ' in post(url,{'action':'issue'})
     assert con.execute('SELECT certificate_number FROM recipients WHERE project_id=? AND name=?',(project,'collision test')).fetchone()[0] is None
     try:get('backup.php',anon);raise AssertionError('backup directly accessible')

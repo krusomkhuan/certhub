@@ -1,9 +1,11 @@
-import urllib.request, urllib.parse, urllib.error, http.cookiejar, sqlite3, subprocess, secrets, re
+import os, mysql_support
+import urllib.request, urllib.parse, urllib.error, http.cookiejar, subprocess, secrets, re
 from pathlib import Path
-root=Path(__file__).resolve().parents[1];base='http://localhost/certhub/'
+if 'CERTHUB_TEST_ROOT' not in os.environ: raise SystemExit('Run python tests/registry.py for isolated MySQL tests')
+root=Path(os.environ['CERTHUB_TEST_ROOT']);base=os.environ['CERTHUB_TEST_URL']
 # Initialize additive migrations before inserting isolated test accounts.
 urllib.request.urlopen(base).read()
-con=sqlite3.connect(root/'data/certhub.sqlite');name='profile_test_'+secrets.token_hex(5);other=name+'_other';password=secrets.token_urlsafe(18);newpass=secrets.token_urlsafe(18)
+con=mysql_support.Connection();name='profile_test_'+secrets.token_hex(5);other=name+'_other';password=secrets.token_urlsafe(18);newpass=secrets.token_urlsafe(18)
 hash_value=subprocess.check_output(['C:/xampp/php/php.exe','-r','echo password_hash($argv[1], PASSWORD_DEFAULT);',password],text=True)
 ids=[]
 for username in [name,other]:

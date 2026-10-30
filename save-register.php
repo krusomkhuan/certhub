@@ -2,14 +2,15 @@
 if(!isset($db) || !canIssue()){http_response_code(403);exit;}
 if($action==='central_numbering') {
  $pattern=trim($_POST['number_pattern']??'');$next=filter_var($_POST['number_next']??'',FILTER_VALIDATE_INT);$width=filter_var($_POST['number_width']??'',FILTER_VALIDATE_INT);
- if(substr_count($pattern,'{seq}')!==1 || mb_strlen($pattern)>100 || preg_match('/[{}]/',str_replace(['{year}','{seq}'],'',$pattern)) || preg_match('/[\x00-\x1F\x7F]/',$pattern) || !$next || $next<1 || $next>999999999 || !$width || $width<1 || $width>9) throw new RuntimeException('รูปแบบต้องมี {seq} หนึ่งครั้ง ใช้ {year} ได้ ลำดับ 1–999999999 และจำนวนหลัก 1–9');
- $db->exec('BEGIN IMMEDIATE');
+ // {year} is required because the sequence restarts every year; without it numbers would repeat.
+ if(substr_count($pattern,'{seq}')!==1 || substr_count($pattern,'{year}')!==1 || mb_strlen($pattern)>100 || preg_match('/[{}]/',str_replace(['{year}','{seq}'],'',$pattern)) || preg_match('/[\x00-\x1F\x7F]/',$pattern) || !$next || $next<1 || $next>999999999 || !$width || $width<1 || $width>9) throw new RuntimeException('รูปแบบต้องมี {seq} และ {year} อย่างละหนึ่งครั้ง (ลำดับเริ่มใหม่ทุกปี) ลำดับ 1–999999999 และจำนวนหลัก 1–9');
+ beginNumberingTransaction();
  try {
-  $minimum=max((int)setting('central_next'),(int)rows('SELECT COALESCE(MAX(central_sequence),0)+1 n FROM recipients')[0]['n']);
+  $year=numberingYear();$minimum=nextSequence($year);
   if($next<$minimum) throw new RuntimeException('ห้ามย้อนลำดับเลขกลาง ต้องเริ่มที่ '.$minimum.' ขึ้นไป');
-  saveSetting('central_pattern',$pattern);saveSetting('central_next',(string)$next);saveSetting('central_width',(string)$width);
-  $db->exec('COMMIT');
- } catch(Throwable $ex) {$db->exec('ROLLBACK');throw $ex;}
+  saveSetting('central_pattern',$pattern);saveSetting('central_next',(string)$next);saveSetting('central_year',(string)$year);saveSetting('central_width',(string)$width);
+  $db->commit();
+ } catch(Throwable $ex) {$db->rollBack();throw $ex;}
  $_SESSION['notice']='บันทึกรูปแบบเลขกลางทั้งวิทยาลัยแล้ว เลขที่ออกแล้วไม่เปลี่ยน';go('?page=register');
 }
 if($action==='direct_issue') {
@@ -20,21 +21,21 @@ if($action==='direct_issue') {
  foreach($names as $name) if(mb_strlen($name)>200) throw new RuntimeException('ชื่อผู้รับต้องไม่เกิน 200 ตัวอักษร');
  if(!in_array($_POST['output_mode']??'register',['register','certificate'],true)) throw new RuntimeException('รูปแบบการออกเลขไม่ถูกต้อง');
  $recordOnly=($_POST['output_mode']??'register')==='register';
- $title=trim($_POST['title']??'');$owner=trim($_POST['owner']??'');$heading=trim($_POST['heading']??'');$date=$_POST['date']??'';$type=$_POST['event_type']??'other';
- if(!$title || !$owner || (!$recordOnly && !$heading) || !isset($eventTypes[$type])) throw new RuntimeException('กรุณาระบุชื่องาน ผู้รับ ผู้รับผิดชอบ ข้อความรับรอง และประเภทงาน');
+ $title=trim($_POST['title']??'');$owner=trim($_POST['owner']??'');$date=$_POST['date']??'';$type=$_POST['event_type']??'other';
+ if(!$title || !$owner || !isset($eventTypes[$type])) throw new RuntimeException('กรุณาระบุชื่องาน ผู้รับ ผู้รับผิดชอบ และประเภทงาน');
  if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || date('Y-m-d',strtotime($date))!==$date) throw new RuntimeException('วันที่ไม่ถูกต้อง');
- $db->exec('BEGIN IMMEDIATE');
+ beginNumberingTransaction();
  try {
   run('INSERT INTO projects(title,date,end_date,location,description,owner,event_type,published) VALUES(?,?,?,?,?,?,?,?)',[$title,$date,$date,trim($_POST['location']??''),'ออกเกียรติบัตรจากทะเบียนกลาง',$owner,$type,!$recordOnly && !empty($_POST['published'])?1:0]);
   $workId=(int)$db->lastInsertId();
-  if(!$recordOnly) foreach($roles as $role=>$label) run('INSERT INTO templates(project_id,role,heading,signer,position) VALUES(?,?,?,?,?)',[$workId,$role,$role==='general'?$heading:'เพื่อแสดงว่าได้เป็น'.$label.'ในงานนี้',trim($_POST['signer']??''),trim($_POST['position']??'')]);
+  if(!$recordOnly) foreach($roles as $role=>$label) run('INSERT INTO templates(project_id,role,heading,signer,position) VALUES(?,?,?,?,?)',[$workId,$role,$role==='general'?'เพื่อแสดงว่าได้รับเกียรติบัตรในงานนี้':'เพื่อแสดงว่าได้เป็น'.$label.'ในงานนี้','','']);
   foreach($names as $name) { $token=bin2hex(random_bytes(16));
   run('INSERT INTO recipients(project_id,name,organization,role,token,record_only) VALUES(?,?,?,?,?,?)',[$workId,$name,trim($_POST['organization']??''),'general',$token,$recordOnly?1:0]); }
   issueCertificates($workId,false);
   $numbers=array_column(rows('SELECT certificate_number FROM recipients WHERE project_id=? ORDER BY id',[$workId]),'certificate_number');
   $number=count($numbers)===1?$numbers[0]:$numbers[0].' ถึง '.$numbers[count($numbers)-1];
-  $db->exec('COMMIT');
- } catch(Throwable $ex) {$db->exec('ROLLBACK');throw $ex;}
+  $db->commit();
+ } catch(Throwable $ex) {$db->rollBack();throw $ex;}
  unset($_SESSION['issue_nonce']);
  $_SESSION['notice']='ออกเลขที่ '.$number.' จำนวน '.count($numbers).' เลข'.($recordOnly?' แล้ว (ลงทะเบียนเลขที่อย่างเดียว ไม่มีเอกสาร)':' แล้ว ดู/พิมพ์เกียรติบัตรได้จากทะเบียนด้านล่าง');go('?page=register');
 }

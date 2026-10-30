@@ -1,9 +1,11 @@
-import urllib.request, urllib.parse, urllib.error, http.cookiejar, sqlite3, subprocess, secrets, re
+import os, mysql_support
+import urllib.request, urllib.parse, urllib.error, http.cookiejar, subprocess, secrets, re
 from pathlib import Path
-root=Path(__file__).resolve().parents[1];base='http://localhost/certhub/'
+if 'CERTHUB_TEST_ROOT' not in os.environ: raise SystemExit('Run python tests/registry.py for isolated MySQL tests')
+root=Path(os.environ['CERTHUB_TEST_ROOT']);base=os.environ['CERTHUB_TEST_URL']
 # Initialize additive migrations before inserting isolated test accounts.
 urllib.request.urlopen(base).read()
-con=sqlite3.connect(root/'data/certhub.sqlite');name='profile_test_'+secrets.token_hex(5);other=name+'_other';password=secrets.token_urlsafe(18);newpass=secrets.token_urlsafe(18)
+con=mysql_support.Connection();name='profile_test_'+secrets.token_hex(5);other=name+'_other';password=secrets.token_urlsafe(18);newpass=secrets.token_urlsafe(18)
 hash_value=subprocess.check_output(['C:/xampp/php/php.exe','-r','echo password_hash($argv[1], PASSWORD_DEFAULT);',password],text=True)
 ids=[]
 for username in [name,other]:
@@ -29,7 +31,7 @@ try:
     assert row and row[1]!=newpass and row[2]=='backup@example.test'
     assert 'มีผู้ใช้งานแล้ว' in post(a,'?page=admins',payload())
     assert 'ภาพรวมระบบ' in post(b,'?page=login',{'action':'login','username':created,'password':newpass})
-    assert 'เพิ่มผู้ดูแลระบบสำรอง' in get(b,'?page=admins')
+    assert 'เพิ่มบัญชีผู้ใช้งานและสิทธิ์' in get(b,'?page=admins')
     assert name in get(a,'?page=profile')
     assert 'ยินดีต้อนรับกลับ' in get(client(),'?page=admins')
     before=con.execute('SELECT COUNT(*) FROM admins').fetchone()[0]

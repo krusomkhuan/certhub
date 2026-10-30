@@ -7,3 +7,10 @@
 *.log
 __pycache__/
 *.pyc
+
+/config.php
+# Any real DB config or database dump (production data) stays out of Git.
+/config*.php
+!/config.example.php
+/database/*.sql
+!/database/schema.sql

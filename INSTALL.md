@@ -1,12 +1,12 @@
 # ติดตั้ง CertHub บนเซิร์ฟเวอร์จริง
 
-คู่มือนี้ใช้ Apache 2.4 และ PHP บนเซิร์ฟเวอร์เดียว ฐานข้อมูลเป็น SQLite ไม่ต้องสร้างฐานข้อมูล MySQL และไม่ต้องติดตั้ง Composer/Node.js สำหรับใช้งานเว็บ
+คู่มือนี้ใช้ Apache 2.4 และ PHP บนเซิร์ฟเวอร์เดียว ใช้ฐานข้อมูล MySQL 8.0+ หรือ MariaDB 10.6+ (InnoDB + utf8mb4) รุ่น 2.0.0 ไม่ใช้ SQLite ในการเปิดเว็บ และไม่ต้องติดตั้ง Composer/Node.js สำหรับใช้งานเว็บ
 
 ## 1. เตรียมโดเมนและ PHP
 
 ตั้ง DNS ของโดเมนหรือ subdomain ให้ชี้ไปยังเซิร์ฟเวอร์ เช่น `cert.example.ac.th` เปิด HTTPS ผ่านระบบจัดการโฮสติ้งหรือใบรับรองของเซิร์ฟเวอร์
 
-ใช้ PHP 8.4 หรือรุ่นใหม่กว่าที่ผู้ให้บริการดูแลแพตช์ และทดสอบบนรุ่นที่เลือกก่อนเปิดใช้งาน เปิดส่วนขยาย `pdo_sqlite`, `sqlite3`, `mbstring`, `fileinfo`, `Phar` และฟังก์ชันอัปโหลดไฟล์ โดย PHP ที่รันผ่านเว็บต้องมีส่วนขยายด้วย ไม่ใช่เฉพาะ PHP CLI
+ใช้ PHP 8.4 หรือรุ่นใหม่กว่าที่ผู้ให้บริการดูแลแพตช์ และทดสอบบนรุ่นที่เลือกก่อนเปิดใช้งาน เปิดส่วนขยาย `pdo_mysql`, `mbstring`, `fileinfo`, `Phar` และฟังก์ชันอัปโหลดไฟล์ โดย PHP ที่รันผ่านเว็บต้องมีส่วนขยายด้วย ไม่ใช่เฉพาะ PHP CLI
 
 ค่าที่แนะนำใน php.ini ของเว็บ:
 
@@ -32,7 +32,7 @@ session.cookie_secure = On
 git clone https://github.com/krusomkhuan/certhub.git /var/www/certhub
 ```
 
-หรือดาวน์โหลด ZIP จาก GitHub แล้วอัปโหลดผ่าน SFTP/File Manager ให้มี `index.php`, `bootstrap.php`, `version.php`, โฟลเดอร์ `assets`, `data` และไฟล์อื่นครบ รวมไฟล์ซ่อน `.htaccess` ที่ root และ `data/.htaccess`
+หรือดาวน์โหลด ZIP จาก GitHub แล้วอัปโหลดผ่าน SFTP/File Manager ให้มี `index.php`, `bootstrap.php`, `version.php`, โฟลเดอร์ `assets`, `data` และไฟล์อื่นครบ รวมไฟล์ซ่อน `.htaccess` ที่ root, `data/.htaccess`, `database/.htaccess` และ `tools/.htaccess`
 
 GitHub ไม่มีฐานข้อมูล ภาพอัปโหลด โครงการสมมุติ หรือบัญชีทดสอบในเครื่องพัฒนา การติดตั้งใหม่จะเริ่มด้วยข้อมูลว่าง
 
@@ -43,7 +43,19 @@ sudo chown -R www-data:www-data /var/www/certhub/data
 sudo chmod 750 /var/www/certhub/data
 ```
 
-ไม่ใช้สิทธิ์ 777 กับทั้งโปรเจกต์ SQLite ต้องเขียนทั้งตัวไฟล์และโฟลเดอร์สำหรับ journal/ไฟล์สำรองชั่วคราวได้
+ไม่ใช้สิทธิ์ 777 กับทั้งโปรเจกต์ โฟลเดอร์ data ใช้เก็บภาพและไฟล์สำรองชั่วคราว ไม่เก็บฐานข้อมูลหลักแล้ว
+
+## 2.1 สร้างฐานข้อมูล MySQL และตั้งค่าเชื่อมต่อ
+
+ใน cPanel / DirectAdmin / phpMyAdmin สร้างฐานข้อมูลและบัญชี MySQL แล้วให้สิทธิ์บัญชีนั้นเฉพาะฐานข้อมูล CertHub (ไม่ใช้ root บนเซิร์ฟเวอร์จริง) เลือก charset `utf8mb4` และ collation `utf8mb4_bin`
+
+คัดลอก `config.example.php` เป็น `config.php` แล้วกรอก host, port, database, username, password ที่โฮสติ้งให้ ชื่อฐานข้อมูลอาจมี prefix เช่น `college_certhub` ตัวไฟล์ config.php ถูกยกเว้นจาก Git และไฟล์สำรอง ZIP ต้องสร้างใหม่เมื่อย้ายเครื่อง
+
+สามารถใช้ environment variables แทนได้: `CERTHUB_DB_HOST`, `CERTHUB_DB_PORT`, `CERTHUB_DB_DATABASE`, `CERTHUB_DB_USERNAME`, `CERTHUB_DB_PASSWORD`, `CERTHUB_DB_SSL_CA` โดย environment จะทับค่าใน config.php ถ้าฐานข้อมูลอยู่เครื่องอื่นและต้องใช้ TLS ให้ใส่ path ของ CA ตามผู้ให้บริการ
+
+ติดตั้งใหม่: นำเข้า `database/schema.sql` ผ่าน phpMyAdmin หรือเปิดเว็บครั้งแรกให้ระบบสร้างตาราง (ต้องมีสิทธิ์ CREATE/INDEX/REFERENCES) หากตารางมีอยู่แล้ว ระบบใช้ SELECT/INSERT/UPDATE/DELETE ในการทำงานตามปกติ บัญชีสำรองข้อมูลต้องอ่าน SHOW CREATE TABLE ได้
+
+ย้ายข้อมูลเดิม: ใช้ไฟล์ `database/certhub.sql` จาก ZIP สำรอง MySQL นำเข้าฐานข้อมูล **ว่าง** แทน schema.sql เพราะไฟล์สำรองมีทั้งโครงสร้างและข้อมูล ห้ามนำเข้าทับฐานข้อมูลที่มีข้อมูลอยู่
 
 ## 3. ตั้ง Apache
 
@@ -63,12 +75,18 @@ DocumentRoot /var/www/certhub
 <Directory /var/www/certhub/tests>
     Require all denied
 </Directory>
+<Directory /var/www/certhub/database>
+    Require all denied
+</Directory>
+<Directory /var/www/certhub/tools>
+    Require all denied
+</Directory>
 <Directory /var/www/certhub/.git>
     Require all denied
 </Directory>
 ```
 
-ตรวจ configuration ก่อน reload Apache ตามคำสั่งของระบบ เช่น `apachectl configtest` หากใช้ shared hosting ให้ผู้ให้บริการยืนยันว่า `.htaccess` และ `Require all denied` ทำงานจริง หากใช้ Nginx ต้องกำหนด deny สำหรับ `/data/`, `/tests/`, `/.git/` และไฟล์ `.env` ใน server configuration เพราะ Nginx ไม่อ่าน `.htaccess`
+ตรวจ configuration ก่อน reload Apache ตามคำสั่งของระบบ เช่น `apachectl configtest` หากใช้ shared hosting ให้ผู้ให้บริการยืนยันว่า `.htaccess` และ `Require all denied` ทำงานจริง หากใช้ Nginx ต้องกำหนด deny สำหรับ `/data/`, `/tests/`, `/.git/`, `/database/`, `/tools/` และไฟล์ `.env` / `config.php` ใน server configuration เพราะ Nginx ไม่อ่าน `.htaccess`
 
 ## 4. สร้างบัญชีหลักครั้งแรก
 
@@ -108,16 +126,36 @@ ssh -N -L 9090:127.0.0.1:9090 your-user@your-server
 - เปิดหน้าหลักและรายละเอียดโครงการได้โดยไม่เข้าสู่ระบบ
 - ค้นหาโดยชื่อและโครงการ ดู/พิมพ์เกียรติบัตรที่เผยแพร่แล้วได้
 - หน้าเข้าสู่ระบบและสิทธิ์ทั้งสามบทบาททำงานตามหน้าที่
-- URL `/data/certhub.sqlite`, `/.git/config`, `/tests/registry.py` ต้องตอบ 403 หรือ 404 และต้องไม่ดาวน์โหลดเนื้อหาได้
+- URL `/data/certhub.sqlite`, `/config.php`, `/database/schema.sql`, `/tools/migrate-sqlite.php`, `/.git/config`, `/tests/registry.py` ต้องตอบ 403 หรือ 404 และต้องไม่ดาวน์โหลดเนื้อหาได้
 - อัปโหลดภาพและดาวน์โหลด ZIP สำรองได้
 - สแกน QR จากโทรศัพท์ที่ไม่ได้อยู่ในเครื่องเซิร์ฟเวอร์ แล้วเปิด URL ถูกต้อง
 
-กรณีย้ายข้อมูลจริง ให้หยุดการเขียนข้อมูลเดิมก่อนนำฐานข้อมูลและภาพมาครบชุด ห้ามเปิดสองระบบแยกกันให้ออกเลขพร้อมกัน เพราะแต่ละ SQLite จะมีตัวนับของตัวเอง หากกู้คืนชุดเก่าต้องกระทบยอดเลขที่ออกหลังวันสำรองก่อนเปิดออกเลขใหม่
+กรณีย้ายข้อมูลจริง ให้หยุดการเขียนข้อมูลเดิมก่อนนำฐานข้อมูลและภาพมาครบชุด ห้ามเปิดสองระบบแยกกันให้ออกเลขพร้อมกัน หากใช้คนละฐานข้อมูลจะมีตัวนับของตัวเอง ทุกเครื่องที่ให้บริการต้องใช้ MySQL กลางเดียวกัน หากกู้คืนชุดเก่าต้องกระทบยอดเลขที่ออกหลังวันสำรองก่อนเปิดออกเลขใหม่
 
 ## 7. อัปเดตและสำรอง
 
-ก่อนอัปเดตให้ดาวน์โหลดไฟล์สำรอง ตรวจว่าเปิด ZIP ได้ และเก็บในที่จำกัดสิทธิ์ จากนั้นอัปเดตซอร์สจาก GitHub โดยไม่เขียนทับ `data/` การเปิดเว็บจะรัน additive migrations ของฐานข้อมูลตามโค้ดรุ่นนั้น ตรวจเลขเวอร์ชันและฟังก์ชันสำคัญหลังอัปเดตทุกครั้ง
+ก่อนอัปเดตให้ดาวน์โหลดไฟล์สำรอง ตรวจว่าเปิด ZIP ได้ และเก็บในที่จำกัดสิทธิ์ จากนั้นอัปเดตซอร์สจาก GitHub โดยไม่เขียนทับ `data/` ต้องทำตาม CHANGELOG และคู่มือย้ายฐานข้อมูลของรุ่นนั้นก่อนเปิดระบบ รุ่น 2.0.0 ต้องมีฐานข้อมูล MySQL ที่ย้ายข้อมูลแล้ว ตรวจเลขเวอร์ชันและฟังก์ชันสำคัญหลังอัปเดตทุกครั้ง
 
 ไฟล์สำรองไม่เข้ารหัส และรวมข้อมูลบัญชี/ข้อมูลส่วนบุคคล ไม่ควรวาง ZIP ไว้ในโฟลเดอร์ที่บุคคลทั่วไปดาวน์โหลดได้
 
 อ้างอิง: [PHP รุ่นที่ยังรองรับ](https://www.php.net/supported-versions.php), [Apache .htaccess](https://httpd.apache.org/docs/2.4/howto/htaccess.html)
+
+## ย้ายจาก SQLite รุ่น 1.x มายัง MySQL รุ่น 2.0.0
+
+ทำบนเครื่องเดิมที่ยังอ่าน SQLite ได้ เช่น XAMPP ของผู้พัฒนา โฮสติ้งปลายทางไม่ต้องมี SQLite:
+
+1. ปิดการใช้งานระบบเดิมชั่วคราวและเก็บสำเนา `data/` ทั้งชุดพร้อมซอร์สเดิม
+2. สร้างฐานข้อมูล MySQL ว่าง แล้วตั้ง config.php ไปยังฐานข้อมูลใหม่
+3. รันบนเครื่องเดิม:
+
+```bash
+php tools/migrate-sqlite.php data/certhub.sqlite
+```
+
+เครื่องมือต้องใช้ `pdo_sqlite` เฉพาะตอนอ่านต้นทาง และ `pdo_mysql` สำหรับปลายทาง จะปฏิเสธฐานข้อมูลที่ไม่ว่าง ตรวจเทียบทุกคอลัมน์ รหัสผ่านที่แฮชแล้ว เลขเกียรติบัตร token วันที่ และจำนวนแถวก่อน commit หากเกิดความผิดพลาดจะ rollback ข้อมูลใน MySQL ไฟล์ SQLite ต้นทางไม่ถูกแก้ไขหรือลบ
+
+4. เปิดเว็บและตรวจบัญชี/โครงการ จากนั้นดาวน์โหลด ZIP สำรองใหม่ ไฟล์ SQL อยู่ที่ `database/certhub.sql`
+5. นำ SQL เข้า MySQL ว่างของโฮสติ้งผ่าน phpMyAdmin และนำไฟล์ซอร์ส/ภาพขึ้นครบชุด สร้าง config.php ด้วยค่าของโฮสติ้ง ตรวจทุกอย่างก่อนเปิดใช้งาน
+6. เก็บ SQLite เดิมไว้เป็นสำรองแบบออฟไลน์ อย่านำระบบ SQLite เก่าและระบบ MySQL ใหม่มาออกเลขคู่ขนานกัน
+
+ข้อมูลจากรุ่นก่อน v1.0.0 ที่มี schema ไม่ครบควรเปิดด้วยซอร์ส v1.0.0 เพื่อทำ migration เดิมก่อนใช้เครื่องมือแปลงนี้
